@@ -25,6 +25,7 @@ const defaultState = {
   completedDays: [2, 3, 5, 8, 10, 12, 15, 16, 18, 22],
   points: 2480,
   body: { weight: "82", height: "1.84", target: "78" },
+  nutrition: { calories: 2300, carbs: 210, protein: 142, fat: 58 },
   exercises: [
     { id: "squat", plan: "A", name: "Agachamento livre", group: "Pernas", sets: "4x8", rest: "90s", weight: 80, goal: 100, color: palette.green },
     { id: "legpress", plan: "A", name: "Leg press 45", group: "Pernas", sets: "4x10", rest: "75s", weight: 140, goal: 180, color: palette.orange },
@@ -52,6 +53,7 @@ function createEmptyState(role = "Aluno") {
     workoutHistory: [],
     points: 0,
     body: { weight: "", height: "", target: "" },
+    nutrition: { calories: 2300, carbs: 0, protein: 0, fat: 0 },
     exercises: [],
     meals: [],
     goals: [],
@@ -145,6 +147,10 @@ function normalizeState(rawState) {
     workoutHistory: rawState.workoutHistory || [],
     goals: rawState.goals || [],
     profilePhoto: rawState.profilePhoto || "",
+    nutrition: {
+      ...defaultState.nutrition,
+      ...(rawState.nutrition || {}),
+    },
     exercises: (rawState.exercises || []).map((item) => ({
       ...item,
       plan: item.plan || "A",
@@ -297,6 +303,18 @@ function handleDataFormSubmit(event) {
           color: nextColor(index + 1),
         },
       ],
+    }));
+  }
+
+  if (type === "nutrition") {
+    setState((current) => ({
+      ...current,
+      nutrition: {
+        calories: Math.max(1, Math.round(numberFromInput(data.get("calories"), current.nutrition?.calories || 2300))),
+        carbs: Math.max(0, Math.round(numberFromInput(data.get("carbs"), current.nutrition?.carbs || 0))),
+        protein: Math.max(0, Math.round(numberFromInput(data.get("protein"), current.nutrition?.protein || 0))),
+        fat: Math.max(0, Math.round(numberFromInput(data.get("fat"), current.nutrition?.fat || 0))),
+      },
     }));
   }
 
@@ -498,9 +516,25 @@ function row(item, extra = "") {
         ${item.goal ? progress(item.weight / item.goal, item.color) : ""}
       </div>
       <div>
-        <span class="row-value" style="--row-color:${item.color}">${item.kcal ? `${item.kcal}` : `${item.weight}kg`}</span>
+        <span class="row-value" style="--row-color:${item.color}">${item.kcal !== undefined ? `${item.kcal}` : `${item.weight}kg`}</span>
         ${extra}
       </div>
+    </div>
+  `;
+}
+
+function mealRow(meal) {
+  return `
+    <div class="row">
+      <span class="dot" style="--dot-color:${meal.color}"></span>
+      <div>
+        <strong>${escapeHtml(meal.name)}</strong>
+        <small>${escapeHtml(meal.detail)}</small>
+      </div>
+      <label class="row-input">
+        <input value="${escapeHtml(meal.kcal)}" inputmode="numeric" data-action="meal-kcal" data-id="${meal.id}" />
+        <span>kcal</span>
+      </label>
     </div>
   `;
 }
@@ -737,6 +771,18 @@ function refreshBodySummary() {
   if (bodyProgress) bodyProgress.style.setProperty("--progress", clamp(bodyGoalProgress()));
 }
 
+function refreshFoodSummary() {
+  const calories = state.meals.reduce((sum, meal) => sum + meal.kcal, 0);
+  const nutrition = state.nutrition || defaultState.nutrition;
+  const title = document.querySelector("#food-calories-title");
+  const target = document.querySelector("#food-calories-target");
+  const foodProgress = document.querySelector("#food-progress");
+
+  if (title) title.textContent = `${calories} kcal registradas`;
+  if (target) target.textContent = `Meta diaria: ${nutrition.calories} kcal`;
+  if (foodProgress) foodProgress.style.setProperty("--progress", clamp(calories / nutrition.calories));
+}
+
 function field(label, key, suffix) {
   return `
     <div class="field">
@@ -751,20 +797,34 @@ function field(label, key, suffix) {
 
 function renderFood() {
   const calories = state.meals.reduce((sum, meal) => sum + meal.kcal, 0);
+  const nutrition = state.nutrition || defaultState.nutrition;
   return `
     ${pageHead("Alimentacao", "Macros e refeicoes do dia")}
     <div class="metrics">
-      ${metric("210g", "Carbo", palette.orange)}
-      ${metric("142g", "Proteina", palette.greenDark)}
-      ${metric("58g", "Gordura", palette.violet)}
+      ${metric(`${nutrition.carbs}g`, "Carbo", palette.orange)}
+      ${metric(`${nutrition.protein}g`, "Proteina", palette.greenDark)}
+      ${metric(`${nutrition.fat}g`, "Gordura", palette.violet)}
     </div>
     <section class="card">
-      <h2>${calories} kcal registradas</h2>
-      ${progress(calories / 2300, palette.orange)}
+      <h2 id="food-calories-title">${calories} kcal registradas</h2>
+      ${progress(calories / nutrition.calories, palette.orange, 'id="food-progress"')}
+      <p id="food-calories-target">Meta diaria: ${nutrition.calories} kcal</p>
+    </section>
+    <section class="card">
+      <h2>Meta alimentar</h2>
+      <form class="stack-form" data-form="nutrition">
+        <input name="calories" value="${escapeHtml(nutrition.calories)}" inputmode="numeric" placeholder="Calorias do dia" />
+        <div class="form-grid">
+          <input name="carbs" value="${escapeHtml(nutrition.carbs)}" inputmode="numeric" placeholder="Carbo g" />
+          <input name="protein" value="${escapeHtml(nutrition.protein)}" inputmode="numeric" placeholder="Proteina g" />
+        </div>
+        <input name="fat" value="${escapeHtml(nutrition.fat)}" inputmode="numeric" placeholder="Gordura g" />
+        <button class="secondary" type="submit">Salvar meta</button>
+      </form>
     </section>
     <section class="card">
       <h2>Lista do dia</h2>
-      ${state.meals.length ? `<div class="list">${state.meals.map((meal) => row(meal)).join("")}</div>` : emptyState("Nenhuma refeicao cadastrada", "Adicione sua primeira refeicao para montar o plano do dia.")}
+      ${state.meals.length ? `<div class="list">${state.meals.map((meal) => mealRow(meal)).join("")}</div>` : emptyState("Nenhuma refeicao cadastrada", "Adicione sua primeira refeicao para montar o plano do dia.")}
     </section>
     <section class="card">
       <h2>Nova refeicao</h2>
@@ -1034,15 +1094,31 @@ screen.addEventListener("change", (event) => {
 });
 
 screen.addEventListener("input", (event) => {
-  const input = event.target.closest("[data-action='body']");
-  if (!input) return;
-  const field = input.dataset.field;
-  state = {
-    ...state,
-    body: { ...state.body, [field]: input.value },
-  };
-  saveState();
-  refreshBodySummary();
+  const bodyInput = event.target.closest("[data-action='body']");
+  if (bodyInput) {
+    const field = bodyInput.dataset.field;
+    state = {
+      ...state,
+      body: { ...state.body, [field]: bodyInput.value },
+    };
+    saveState();
+    refreshBodySummary();
+    return;
+  }
+
+  const mealInput = event.target.closest("[data-action='meal-kcal']");
+  if (mealInput) {
+    const id = mealInput.dataset.id;
+    const kcal = Math.max(0, Math.round(numberFromInput(mealInput.value, 0)));
+    state = {
+      ...state,
+      meals: state.meals.map((meal) => (
+        meal.id === id ? { ...meal, kcal } : meal
+      )),
+    };
+    saveState();
+    refreshFoodSummary();
+  }
 });
 
 profileToggle.addEventListener("click", () => {

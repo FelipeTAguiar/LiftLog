@@ -534,6 +534,35 @@ button { cursor: pointer; }
   white-space: nowrap;
 }
 
+.row-input {
+  width: 76px;
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: 1fr;
+  align-content: center;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  text-align: center;
+}
+
+.row-input input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font-weight: 900;
+  text-align: center;
+}
+
+.row-input span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1;
+}
+
 .stepper {
   display: flex;
   gap: 6px;
