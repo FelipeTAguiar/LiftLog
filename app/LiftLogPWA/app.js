@@ -15,6 +15,7 @@ const palette = {
 
 const defaultState = {
   profile: "Aluno",
+  profilePhoto: "",
   activePlan: "A",
   workoutPlans: {
     A: { name: "Treino A", days: ["Seg", "Qui"] },
@@ -40,6 +41,7 @@ const defaultState = {
 function createEmptyState(role = "Aluno") {
   return {
     profile: role,
+    profilePhoto: "",
     activePlan: "A",
     workoutPlans: {
       A: { name: "Treino A", days: [] },
@@ -58,6 +60,7 @@ function createEmptyState(role = "Aluno") {
 
 const tabs = [
   { key: "home", label: "Home" },
+  { key: "profile", label: "Perfil" },
   { key: "workout", label: "Treino" },
   { key: "calendar", label: "Agenda" },
   { key: "body", label: "IMC" },
@@ -141,6 +144,7 @@ function normalizeState(rawState) {
     },
     workoutHistory: rawState.workoutHistory || [],
     goals: rawState.goals || [],
+    profilePhoto: rawState.profilePhoto || "",
     exercises: (rawState.exercises || []).map((item) => ({
       ...item,
       plan: item.plan || "A",
@@ -423,6 +427,31 @@ function planDaysText(plan = activePlan()) {
   return plan.days?.length ? plan.days.join(", ") : "Sem dias definidos";
 }
 
+function userDisplayName() {
+  return currentUser?.name || "Usuario LiftLog";
+}
+
+function userInitials() {
+  return userDisplayName()
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase() || "L";
+}
+
+function userLevel() {
+  return Math.max(1, Math.floor((state.points || 0) / 1000) + 1);
+}
+
+function profileAvatar(className = "avatar") {
+  if (state.profilePhoto) {
+    return `<span class="${className} has-photo"><img src="${state.profilePhoto}" alt="Foto de ${escapeHtml(userDisplayName())}" /></span>`;
+  }
+  return `<span class="${className}">${escapeHtml(userInitials())}</span>`;
+}
+
 function moneylessBmi() {
   const weight = Number(String(state.body.weight).replace(",", "."));
   const height = Number(String(state.body.height).replace(",", "."));
@@ -437,7 +466,7 @@ function pageHead(title, subtitle) {
         <h1>${title}</h1>
         <p>${subtitle}</p>
       </div>
-      <span class="avatar">F</span>
+      ${profileAvatar()}
     </div>
   `;
 }
@@ -504,6 +533,41 @@ function renderHome() {
         </div>
       ` : emptyState("Nenhum exercicio cadastrado", "Va em Treino e cadastre o primeiro exercicio da sua ficha.")}
     </section>
+  `;
+}
+
+function renderProfile() {
+  const totalWorkouts = (state.workoutHistory || []).length;
+  const points = state.points || 0;
+  const nextLevelProgress = (points % 1000) / 1000;
+  return `
+    ${pageHead("Perfil", "Sua conta e evolucao")}
+    <section class="card profile-card">
+      ${profileAvatar("profile-photo")}
+      <div>
+        <h2>${escapeHtml(userDisplayName())}</h2>
+        <p>${escapeHtml(currentUser?.email || "Email nao informado")}</p>
+        <span>${escapeHtml(state.profile || currentUser?.role || "Aluno")}</span>
+      </div>
+    </section>
+    <div class="profile-actions">
+      <label class="secondary file-button">
+        Trocar foto
+        <input type="file" accept="image/*" data-action="profile-photo" />
+      </label>
+      <button class="secondary" type="button" data-action="remove-photo">Remover foto</button>
+    </div>
+    <section class="card dark-card">
+      <h2 style="font-size:30px">Nivel ${userLevel()}</h2>
+      <p>${points} pontos acumulados</p>
+      ${progress(nextLevelProgress, "#c7f95b")}
+    </section>
+    <div class="metrics">
+      ${metric(String(state.completedDays.length), "Dias", palette.greenDark)}
+      ${metric(String(totalWorkouts), "Treinos", palette.orange)}
+      ${metric(`${exercisesForPlan().length}`, "Ficha", palette.blue)}
+    </div>
+    <button class="dark-button" type="button" data-action="logout">Sair da conta</button>
   `;
 }
 
@@ -751,7 +815,7 @@ function renderRewards() {
   return `
     ${pageHead("Recompensas", "Ganhe pontos por consistencia")}
     <section class="card dark-card">
-      <h2 style="font-size:30px">Nivel 7</h2>
+      <h2 style="font-size:30px">Nivel ${userLevel()}</h2>
       <p>${state.points} pontos acumulados</p>
       ${progress((state.points % 1000) / 1000, "#c7f95b")}
     </section>
@@ -798,6 +862,7 @@ function renderTrainer() {
 
 const renderers = {
   home: renderHome,
+  profile: renderProfile,
   workout: renderWorkout,
   calendar: renderCalendar,
   body: renderBody,
@@ -879,6 +944,28 @@ function finishWorkout() {
   alert("Treino finalizado. Boa! Ele entrou no historico e somou +120 pontos.");
 }
 
+function handleProfilePhotoChange(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  if (!file.type.startsWith("image/")) {
+    alert("Escolha uma imagem para usar como foto.");
+    return;
+  }
+  if (file.size > 2 * 1024 * 1024) {
+    alert("Escolha uma imagem menor que 2MB por enquanto.");
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.addEventListener("load", () => {
+    setState((current) => ({
+      ...current,
+      profilePhoto: String(reader.result || ""),
+    }));
+  });
+  reader.readAsDataURL(file);
+}
+
 screen.addEventListener("submit", (event) => {
   if (event.target.matches("#auth-form")) handleAuthSubmit(event);
   if (event.target.matches("[data-form]")) handleDataFormSubmit(event);
@@ -932,8 +1019,18 @@ screen.addEventListener("click", (event) => {
       )),
     }));
   }
+  if (action === "remove-photo") {
+    setState((current) => ({ ...current, profilePhoto: "" }));
+  }
+  if (action === "logout") logout();
   if (action === "new-goal") alert("Formulario de nova meta entra na proxima versao.");
   if (action === "trainer-plan") alert("Montagem de ficha entra na proxima versao.");
+});
+
+screen.addEventListener("change", (event) => {
+  const input = event.target.closest("[data-action='profile-photo']");
+  if (!input) return;
+  handleProfilePhotoChange(input);
 });
 
 screen.addEventListener("input", (event) => {
