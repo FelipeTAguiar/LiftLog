@@ -13,6 +13,12 @@ const palette = {
   red: "#EF5A5A",
 };
 
+const sampleTrainerStudents = [
+  { id: "student-marina", name: "Marina Souza", email: "marina@email.com", goal: "Treino B sem atraso", assignedPlan: "B", adherence: 68, status: "Atrasado", note: "Revisar carga de inferiores", lastReview: "Hoje", color: palette.red },
+  { id: "student-felipe", name: "Felipe Aguiar", email: "felipe@email.com", goal: "Chegar em 100kg no agachamento", assignedPlan: "A", adherence: 84, status: "Em dia", note: "Boa evolucao de carga", lastReview: "Ontem", color: palette.green },
+  { id: "student-rafael", name: "Rafael Lima", email: "rafael@email.com", goal: "Reduzir IMC e manter frequencia", assignedPlan: "C", adherence: 76, status: "Revisar", note: "Atualizar cardio semanal", lastReview: "2 dias", color: palette.blue },
+];
+
 const defaultState = {
   profile: "Aluno",
   profilePhoto: "",
@@ -37,6 +43,7 @@ const defaultState = {
     { id: "lunch", name: "Almoco", detail: "Arroz, frango e salada", kcal: 710, color: palette.green },
     { id: "pre", name: "Pre-treino", detail: "Batata doce e iogurte", kcal: 340, color: palette.blue },
   ],
+  trainerStudents: sampleTrainerStudents,
 };
 
 function createEmptyState(role = "Aluno") {
@@ -57,6 +64,7 @@ function createEmptyState(role = "Aluno") {
     exercises: [],
     meals: [],
     goals: [],
+    trainerStudents: [],
   };
 }
 
@@ -146,6 +154,7 @@ function normalizeState(rawState) {
     },
     workoutHistory: rawState.workoutHistory || [],
     goals: rawState.goals || [],
+    trainerStudents: rawState.trainerStudents || [],
     profilePhoto: rawState.profilePhoto || "",
     nutrition: {
       ...defaultState.nutrition,
@@ -315,6 +324,51 @@ function handleDataFormSubmit(event) {
         protein: Math.max(0, Math.round(numberFromInput(data.get("protein"), current.nutrition?.protein || 0))),
         fat: Math.max(0, Math.round(numberFromInput(data.get("fat"), current.nutrition?.fat || 0))),
       },
+    }));
+  }
+
+  if (type === "trainer-student") {
+    const name = String(data.get("name") || "").trim();
+    if (!name) return;
+    const index = (state.trainerStudents || []).length;
+    setState((current) => ({
+      ...current,
+      trainerStudents: [
+        ...(current.trainerStudents || []),
+        {
+          id: crypto.randomUUID ? crypto.randomUUID() : `student-${Date.now()}`,
+          name,
+          email: normalizeEmail(data.get("email")),
+          goal: String(data.get("goal") || "Meta a definir").trim() || "Meta a definir",
+          assignedPlan: String(data.get("plan") || "A"),
+          adherence: clamp(numberFromInput(data.get("adherence"), 0) / 100) * 100,
+          status: "Em dia",
+          note: "Aluno cadastrado agora",
+          lastReview: new Date().toLocaleDateString("pt-BR"),
+          color: nextColor(index),
+        },
+      ],
+    }));
+  }
+
+  if (type === "trainer-assignment") {
+    const studentId = String(data.get("studentId") || "");
+    const assignedPlan = String(data.get("plan") || "A");
+    const note = String(data.get("note") || "Ficha atualizada").trim() || "Ficha atualizada";
+    if (!studentId) return;
+    setState((current) => ({
+      ...current,
+      trainerStudents: (current.trainerStudents || []).map((student) => (
+        student.id === studentId
+          ? {
+            ...student,
+            assignedPlan,
+            note,
+            status: "Revisar",
+            lastReview: new Date().toLocaleDateString("pt-BR"),
+          }
+          : student
+      )),
     }));
   }
 
@@ -891,32 +945,98 @@ function renderRewards() {
   `;
 }
 
-function renderTrainer() {
-  const mainExercise = state.exercises[0];
-  const students = [
-    { name: "Marina Souza", detail: "Treino B atrasado ha 2 dias", color: palette.red, value: "ver" },
-    { name: "Felipe Aguiar", detail: mainExercise ? `Meta ${mainExercise.name}: ${Math.round(mainExercise.weight / mainExercise.goal * 100)}%` : "Sem ficha cadastrada", color: palette.green, value: "ver" },
-    { name: "Rafael Lima", detail: "IMC atualizado hoje", color: palette.blue, value: "ver" },
-  ];
+function trainerStatusColor(status) {
+  if (status === "Atrasado") return palette.red;
+  if (status === "Revisar") return palette.orange;
+  return palette.green;
+}
+
+function studentCard(student) {
+  const plan = state.workoutPlans?.[student.assignedPlan] || { name: `Treino ${student.assignedPlan}` };
+  const statusColor = trainerStatusColor(student.status);
   return `
-    ${pageHead("Personal", "12 alunos acompanhados")}
+    <article class="student-card">
+      <div class="student-card-head">
+        <span class="dot" style="--dot-color:${student.color || statusColor}"></span>
+        <div>
+          <strong>${escapeHtml(student.name)}</strong>
+          <small>${escapeHtml(student.email || "Sem email")}</small>
+        </div>
+        <span class="status-pill" style="--status-color:${statusColor}">${escapeHtml(student.status)}</span>
+      </div>
+      <p>${escapeHtml(student.goal)}</p>
+      <div class="student-meta">
+        <span>${escapeHtml(plan.name)}</span>
+        <span>${Math.round(student.adherence || 0)}% adesao</span>
+        <span>${escapeHtml(student.lastReview || "Sem revisao")}</span>
+      </div>
+      ${progress((student.adherence || 0) / 100, statusColor)}
+      <small>${escapeHtml(student.note || "Sem observacoes")}</small>
+      <div class="student-actions">
+        <button type="button" class="secondary" data-action="review-student" data-id="${student.id}">Revisado</button>
+        <button type="button" class="secondary danger" data-action="remove-student" data-id="${student.id}">Remover</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderTrainerAssignmentForm(students) {
+  if (!students.length) {
+    return emptyState("Nenhum aluno para receber ficha", "Cadastre um aluno antes de atribuir Treino A, B ou C.");
+  }
+  return `
+    <form class="stack-form" data-form="trainer-assignment">
+      <select name="studentId">
+        ${students.map((student) => `<option value="${student.id}">${escapeHtml(student.name)}</option>`).join("")}
+      </select>
+      <select name="plan">
+        ${["A", "B", "C"].map((key) => `<option value="${key}">${escapeHtml(state.workoutPlans?.[key]?.name || `Treino ${key}`)}</option>`).join("")}
+      </select>
+      <textarea name="note" placeholder="Observacao para essa ficha"></textarea>
+      <button class="secondary" type="submit">Atribuir ficha</button>
+    </form>
+  `;
+}
+
+function renderTrainer() {
+  const students = state.trainerStudents || [];
+  const activeStudents = students.length;
+  const averageAdherence = students.length
+    ? Math.round(students.reduce((sum, student) => sum + (student.adherence || 0), 0) / students.length)
+    : 0;
+  const alerts = students.filter((student) => student.status !== "Em dia" || (student.adherence || 0) < 70).length;
+  return `
+    ${pageHead("Personal", `${activeStudents} alunos acompanhados`)}
     <div class="metrics">
-      ${metric("84%", "Adesao", palette.greenDark)}
-      ${metric("7", "Alertas", palette.red)}
-      ${metric("23", "Metas", palette.blue)}
+      ${metric(`${averageAdherence}%`, "Adesao", palette.greenDark)}
+      ${metric(String(alerts), "Alertas", palette.red)}
+      ${metric(String(students.filter((student) => student.status === "Revisar").length), "Revisoes", palette.blue)}
     </div>
     <section class="card">
       <h2>Alunos em foco</h2>
-      <div class="list">
-        ${students.map((student) => row({
-          name: student.name,
-          detail: student.detail,
-          color: student.color,
-          weight: student.value,
-        })).join("")}
-      </div>
+      ${students.length ? `<div class="student-list">${students.map((student) => studentCard(student)).join("")}</div>` : emptyState("Nenhum aluno cadastrado", "Adicione o primeiro aluno para acompanhar adesao, objetivo e ficha.")}
     </section>
-    <button class="primary" data-action="trainer-plan">Montar ficha de treino</button>
+    <section class="card">
+      <h2>Novo aluno</h2>
+      <form class="stack-form" data-form="trainer-student">
+        <input name="name" placeholder="Nome do aluno" required />
+        <input name="email" type="email" placeholder="Email do aluno" />
+        <input name="goal" placeholder="Objetivo principal" />
+        <div class="form-grid">
+          <select name="plan">
+            <option value="A">Treino A</option>
+            <option value="B">Treino B</option>
+            <option value="C">Treino C</option>
+          </select>
+          <input name="adherence" inputmode="numeric" placeholder="Adesao %" />
+        </div>
+        <button class="secondary" type="submit">Cadastrar aluno</button>
+      </form>
+    </section>
+    <section class="card">
+      <h2>Montar ficha</h2>
+      ${renderTrainerAssignmentForm(students)}
+    </section>
   `;
 }
 
@@ -1083,8 +1203,31 @@ screen.addEventListener("click", (event) => {
     setState((current) => ({ ...current, profilePhoto: "" }));
   }
   if (action === "logout") logout();
+  if (action === "review-student") {
+    const id = target.dataset.id;
+    setState((current) => ({
+      ...current,
+      trainerStudents: (current.trainerStudents || []).map((student) => (
+        student.id === id
+          ? {
+            ...student,
+            status: "Em dia",
+            adherence: Math.max(student.adherence || 0, 80),
+            lastReview: new Date().toLocaleDateString("pt-BR"),
+            note: "Aluno revisado pelo personal",
+          }
+          : student
+      )),
+    }));
+  }
+  if (action === "remove-student") {
+    const id = target.dataset.id;
+    setState((current) => ({
+      ...current,
+      trainerStudents: (current.trainerStudents || []).filter((student) => student.id !== id),
+    }));
+  }
   if (action === "new-goal") alert("Formulario de nova meta entra na proxima versao.");
-  if (action === "trainer-plan") alert("Montagem de ficha entra na proxima versao.");
 });
 
 screen.addEventListener("change", (event) => {
