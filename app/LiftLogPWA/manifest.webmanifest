@@ -1,0 +1,19 @@
+{
+  "name": "LiftLog",
+  "short_name": "LiftLog",
+  "description": "App para controle de treino, cargas, calendario, IMC, alimentacao, metas e recompensas.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#0d1512",
+  "background_color": "#eef3ef",
+  "icons": [
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
