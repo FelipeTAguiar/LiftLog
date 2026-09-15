@@ -375,6 +375,7 @@ function handleDataFormSubmit(event) {
   if (type === "goal") {
     const title = String(data.get("title") || "").trim();
     if (!title) return;
+    const date = String(data.get("date") || "").trim();
     const index = (state.goals || []).length;
     setState((current) => ({
       ...current,
@@ -384,7 +385,7 @@ function handleDataFormSubmit(event) {
           id: crypto.randomUUID ? crypto.randomUUID() : `goal-${Date.now()}`,
           title,
           detail: String(data.get("detail") || "Meta personalizada").trim() || "Meta personalizada",
-          date: String(data.get("date") || "Livre").trim() || "Livre",
+          date: date || "Livre",
           progress: clamp(numberFromInput(data.get("progress"), 0) / 100),
           color: nextColor(index + 2),
         },
@@ -903,7 +904,7 @@ function renderGoals() {
         <input name="title" placeholder="Titulo da meta" required />
         <input name="detail" placeholder="Descricao" />
         <div class="form-grid">
-          <input name="date" placeholder="Data alvo" />
+          <input name="date" type="date" aria-label="Data alvo" />
           <input name="progress" inputmode="numeric" placeholder="Progresso %" />
         </div>
         <button class="secondary" type="submit">Adicionar meta</button>
@@ -912,12 +913,19 @@ function renderGoals() {
   `;
 }
 
+function formatGoalDate(date) {
+  if (!date || date === "Livre") return "Livre";
+  const parsed = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return date;
+  return parsed.toLocaleDateString("pt-BR");
+}
+
 function goal(title, text, value, color, date) {
   return `
     <section class="card">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:center">
         <h2>${escapeHtml(title)}</h2>
-        <span class="chip">${escapeHtml(date || "Livre")}</span>
+        <span class="chip">${escapeHtml(formatGoalDate(date))}</span>
       </div>
       <p>${escapeHtml(text)}</p>
       ${progress(value, color)}
