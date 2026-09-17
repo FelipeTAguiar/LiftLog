@@ -60,7 +60,7 @@ function createEmptyState(role = "Aluno") {
     workoutHistory: [],
     points: 0,
     body: { weight: "", height: "", target: "" },
-    nutrition: { calories: 2300, carbs: 0, protein: 0, fat: 0 },
+    nutrition: { calories: "", carbs: "", protein: "", fat: "" },
     exercises: [],
     meals: [],
     goals: [],
@@ -316,14 +316,21 @@ function handleDataFormSubmit(event) {
   }
 
   if (type === "nutrition") {
+    const nutrition = {
+      calories: Math.round(numberFromInput(data.get("calories"), 0)),
+      carbs: Math.round(numberFromInput(data.get("carbs"), 0)),
+      protein: Math.round(numberFromInput(data.get("protein"), 0)),
+      fat: Math.round(numberFromInput(data.get("fat"), 0)),
+    };
+
+    if (Object.values(nutrition).some((value) => value <= 0)) {
+      alert("Preencha calorias, carboidratos, proteinas e gorduras com valores maiores que zero.");
+      return;
+    }
+
     setState((current) => ({
       ...current,
-      nutrition: {
-        calories: Math.max(1, Math.round(numberFromInput(data.get("calories"), current.nutrition?.calories || 2300))),
-        carbs: Math.max(0, Math.round(numberFromInput(data.get("carbs"), current.nutrition?.carbs || 0))),
-        protein: Math.max(0, Math.round(numberFromInput(data.get("protein"), current.nutrition?.protein || 0))),
-        fat: Math.max(0, Math.round(numberFromInput(data.get("fat"), current.nutrition?.fat || 0))),
-      },
+      nutrition,
     }));
   }
 
@@ -829,13 +836,21 @@ function refreshBodySummary() {
 function refreshFoodSummary() {
   const calories = state.meals.reduce((sum, meal) => sum + meal.kcal, 0);
   const nutrition = state.nutrition || defaultState.nutrition;
+  const calorieTarget = Number(nutrition.calories) > 1 ? Number(nutrition.calories) : 0;
   const title = document.querySelector("#food-calories-title");
   const target = document.querySelector("#food-calories-target");
   const foodProgress = document.querySelector("#food-progress");
 
   if (title) title.textContent = `${calories} kcal registradas`;
-  if (target) target.textContent = `Meta diaria: ${nutrition.calories} kcal`;
-  if (foodProgress) foodProgress.style.setProperty("--progress", clamp(calories / nutrition.calories));
+  if (target) target.textContent = calorieTarget
+    ? `Meta diaria: ${calorieTarget} kcal`
+    : "Meta diaria ainda nao definida";
+  if (foodProgress) foodProgress.style.setProperty("--progress", calorieTarget ? clamp(calories / calorieTarget) : 0);
+}
+
+function nutritionInputValue(value, minimum = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > minimum ? parsed : "";
 }
 
 function field(label, key, suffix) {
@@ -853,27 +868,43 @@ function field(label, key, suffix) {
 function renderFood() {
   const calories = state.meals.reduce((sum, meal) => sum + meal.kcal, 0);
   const nutrition = state.nutrition || defaultState.nutrition;
+  const calorieTarget = nutritionInputValue(nutrition.calories, 1);
+  const carbsTarget = nutritionInputValue(nutrition.carbs);
+  const proteinTarget = nutritionInputValue(nutrition.protein);
+  const fatTarget = nutritionInputValue(nutrition.fat);
   return `
     ${pageHead("Alimentacao", "Macros e refeicoes do dia")}
     <div class="metrics">
-      ${metric(`${nutrition.carbs}g`, "Carbo", palette.orange)}
-      ${metric(`${nutrition.protein}g`, "Proteina", palette.greenDark)}
-      ${metric(`${nutrition.fat}g`, "Gordura", palette.violet)}
+      ${metric(carbsTarget ? `${carbsTarget}g` : "--", "Carbo", palette.orange)}
+      ${metric(proteinTarget ? `${proteinTarget}g` : "--", "Proteina", palette.greenDark)}
+      ${metric(fatTarget ? `${fatTarget}g` : "--", "Gordura", palette.violet)}
     </div>
     <section class="card">
       <h2 id="food-calories-title">${calories} kcal registradas</h2>
-      ${progress(calories / nutrition.calories, palette.orange, 'id="food-progress"')}
-      <p id="food-calories-target">Meta diaria: ${nutrition.calories} kcal</p>
+      ${progress(calorieTarget ? calories / calorieTarget : 0, palette.orange, 'id="food-progress"')}
+      <p id="food-calories-target">${calorieTarget ? `Meta diaria: ${calorieTarget} kcal` : "Meta diaria ainda nao definida"}</p>
     </section>
     <section class="card">
       <h2>Meta alimentar</h2>
       <form class="stack-form" data-form="nutrition">
-        <input name="calories" value="${escapeHtml(nutrition.calories)}" inputmode="numeric" placeholder="Calorias do dia" />
+        <label class="form-control">
+          <span>Calorias por dia</span>
+          <input type="number" name="calories" min="1" step="1" value="${escapeHtml(calorieTarget)}" inputmode="numeric" placeholder="Ex.: 2300" required />
+        </label>
         <div class="form-grid">
-          <input name="carbs" value="${escapeHtml(nutrition.carbs)}" inputmode="numeric" placeholder="Carbo g" />
-          <input name="protein" value="${escapeHtml(nutrition.protein)}" inputmode="numeric" placeholder="Proteina g" />
+          <label class="form-control">
+            <span>Carboidratos (g)</span>
+            <input type="number" name="carbs" min="1" step="1" value="${escapeHtml(carbsTarget)}" inputmode="numeric" placeholder="Ex.: 210" required />
+          </label>
+          <label class="form-control">
+            <span>Proteinas (g)</span>
+            <input type="number" name="protein" min="1" step="1" value="${escapeHtml(proteinTarget)}" inputmode="numeric" placeholder="Ex.: 142" required />
+          </label>
         </div>
-        <input name="fat" value="${escapeHtml(nutrition.fat)}" inputmode="numeric" placeholder="Gordura g" />
+        <label class="form-control">
+          <span>Gorduras (g)</span>
+          <input type="number" name="fat" min="1" step="1" value="${escapeHtml(fatTarget)}" inputmode="numeric" placeholder="Ex.: 58" required />
+        </label>
         <button class="secondary" type="submit">Salvar meta</button>
       </form>
     </section>
